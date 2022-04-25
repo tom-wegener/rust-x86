@@ -61,9 +61,13 @@ mod performance_counter {
                 Err(e) => panic!("{}: Can not parse {}", e, value_str),
             }
         } else {
-            match u64::from_str_radix(&value_str, 10) {
-                Ok(u) => u,
-                Err(e) => panic!("{}: Can not parse {}", e, value_str),
+            if value_str.len() == 0 {
+                0
+            } else {
+                match u64::from_str_radix(&value_str, 10) {
+                    Ok(u) => u,
+                    Err(e) => panic!("{}: Can not parse {}", e, value_str),
+                }
             }
         }
     }
