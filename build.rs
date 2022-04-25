@@ -45,7 +45,7 @@ mod performance_counter {
         split_str_parts
             .iter()
             .map(|x| {
-                assert!(x.starts_with("0x"));
+                assert!(x.to_lowercase().starts_with("0x"));
                 match u64::from_str_radix(&x[2..], 16) {
                     Ok(u) => u,
                     Err(e) => panic!("{}: Can not parse {}", e, x),
