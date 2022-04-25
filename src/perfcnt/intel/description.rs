@@ -54,11 +54,11 @@ impl fmt::Debug for MSRIndex {
 pub enum Counter {
     /// Bit-mask containing the fixed counters
     /// usable with the corresponding performance event.
-    Fixed(u8),
+    Fixed(u64),
 
     /// Bit-mask containing the programmable counters
     /// usable with the corresponding performance event.
-    Programmable(u8),
+    Programmable(u64),
 }
 
 impl fmt::Debug for Counter {

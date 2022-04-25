@@ -78,10 +78,10 @@ mod performance_counter {
                 Err(e) => panic!("{}: Can not parse {} in {}", e, x, value_str),
             })
             .fold(0, |acc, c| {
-                if c >= 8 {
+                if c >= 64 {
                     panic!("unexpected counter value: {}", value_str);
                 }
-                assert!(c < 8);
+                assert!(c < 64);
                 acc | 1 << c
             })
     }
@@ -97,16 +97,13 @@ mod performance_counter {
     fn parse_counters(value_str: &str) -> Counter {
         if value_str.to_lowercase().starts_with("fixed counter") {
             let mask: u64 = parse_counter_values(&value_str["fixed counter".len()..]);
-            assert!(mask <= u8::max_value() as u64);
-            Counter::Fixed(mask as u8)
+            Counter::Fixed(mask)
         } else if value_str.to_lowercase().starts_with("fixed") {
             let mask: u64 = parse_counter_values(&value_str["fixed".len()..]);
-            assert!(mask <= u8::max_value() as u64);
-            Counter::Fixed(mask as u8)
+            Counter::Fixed(mask)
         } else {
             let mask: u64 = parse_counter_values(value_str);
-            assert!(mask <= u8::max_value() as u64);
-            Counter::Programmable(mask as u8)
+            Counter::Programmable(mask)
         }
     }
 
