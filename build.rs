@@ -9,13 +9,54 @@ fn main() {
 #[cfg(feature = "performance-counter")]
 mod performance_counter {
 
+    use serde::{Deserialize, Serialize};
+    use serde_json;
     use std::collections::HashMap;
     use std::env;
     use std::fs::File;
     use std::io::{BufReader, BufWriter, Write};
     use std::path::Path;
 
-    use serde_json::Value;
+    #[cfg(feature = "performance-counter")]
+    #[serde(rename_all = "lowercase")]
+    #[derive(Serialize, Deserialize, Debug)]
+    struct PerfCounter {
+        eventname: String,
+        eventcode: String, // One or two u8/u64-values
+        umask: String,      // One or two u8/u64-values
+        briefdescription: String,
+        publicdescription: String,
+        counter: u64,
+        counterhtoff: Option<u64>,
+        pebscounters: Option<u64>,
+        sampleafter_value: u64,
+        msrindex: String, // Vec<u64>: len(1) => MSRIndex::One(split_parts[0]), len(2) => MSRIndex::Two(split_parts[0], split_parts[1])
+        msrvalue: u64,
+        takenalone: bool,
+        countermask: u8, //or u8
+        invert: bool,
+        any_thread: bool,
+        edgedetect: bool,
+        pebs: u8,
+        precisestore: bool,
+        data_la: bool,
+        l1_hit_indication: bool,
+        errata: String,
+        offcore: bool,
+        unit: String,
+        filter: String,
+        xxt_sel: bool,
+        collect_pebsrecord: Option<u64>,
+        ellc: String,
+        even_status: u64,
+        pdir_counter: String,
+        deprecated: bool,
+        fcmask: u8,
+        filter_value: u64,
+        port_mask: u8,
+        umask_ext: u8,
+        counter_type: String,
+    }
 
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -77,13 +118,7 @@ mod performance_counter {
                 Ok(u) => u,
                 Err(e) => panic!("{}: Can not parse {} in {}", e, x, value_str),
             })
-            .fold(0, |acc, c| {
-                if c >= 8 {
-                    panic!("unexpected counter value: {}", value_str);
-                }
-                assert!(c < 8);
-                acc | 1 << c
-            })
+            .fold(0, |acc, c| acc | 1 << c)
     }
 
     fn parse_null_string(value_str: &str) -> Option<&str> {
@@ -105,7 +140,11 @@ mod performance_counter {
             Counter::Fixed(mask as u8)
         } else {
             let mask: u64 = parse_counter_values(value_str);
-            assert!(mask <= u8::max_value() as u64);
+            assert!(
+                mask <= u8::max_value() as u64,
+                "assertion didn't work: {:?} is bigger than u8",
+                mask
+            );
             Counter::Programmable(mask as u8)
         }
     }
@@ -121,7 +160,7 @@ mod performance_counter {
 
     fn parse_performance_counters(inputs: Vec<String>, variable: &str, file: &mut BufWriter<File>) {
         let mut builder_values = HashMap::new();
-        let mut all_events = HashMap::new();
+        //let mut all_events = HashMap::new();
         let mut builder = phf_codegen::Map::new();
 
         for input in inputs {
@@ -129,212 +168,15 @@ mod performance_counter {
 
             let f = File::open(format!("x86data/perfmon_data{}", input.clone()).as_str()).unwrap();
             let reader = BufReader::new(f);
-            let data: Value = serde_json::from_reader(reader).unwrap();
+            let data: Vec<PerfCounter> = serde_json::from_reader(reader).unwrap();
             let uncore = get_file_suffix(input.clone()) == "uncore";
 
-            if data.is_array() {
-                let entries = data.as_array().unwrap();
-                for entry in entries.iter() {
-                    if !entry.is_object() {
-                        panic!("Expected JSON object.");
-                    }
-                    let pcn = entry.as_object().unwrap();
+            for entry in data.iter() {
 
-                    let mut event_code = Tuple::One(0);
-                    let mut umask = Tuple::One(0);
-                    let mut event_name = "";
-                    let mut brief_description = "";
-                    let mut public_description = None;
-                    let mut counter = Counter::Fixed(0);
-                    let mut counter_ht_off = None;
-                    let mut pebs_counters = None;
-                    let mut sample_after_value = 0;
-                    let mut msr_index = MSRIndex::None;
-                    let mut msr_value = 0;
-                    let mut taken_alone = false;
-                    let mut counter_mask = 0;
-                    let mut invert = false;
-                    let mut any_thread = false;
-                    let mut edge_detect = false;
-                    let mut pebs = PebsType::Regular;
-                    let mut precise_store = false;
-                    let mut data_la = false;
-                    let mut l1_hit_indication = false;
-                    let mut errata = None;
-                    let mut offcore = false;
-                    let mut unit = None;
-                    let mut filter = None;
-                    let mut extsel = false;
-                    let mut collect_pebs_record = None;
-                    let mut event_status: u64 = 0;
-                    let mut deprecated: bool = false;
-                    let mut fc_mask: u8 = 0;
-                    let mut filter_value: u64 = 0;
-                    let mut port_mask: u8 = 0;
-                    let mut umask_ext: u8 = 0;
-
-                    let mut do_insert: bool = false;
-
-                    for (key, value) in pcn.iter() {
-                        if !value.is_string() {
-                            println!("Not a string: {:?} -> {:?}", key, value);
-                        }
-
-                        //println!("key = {} value = {}", key, value.as_string().unwrap());
-                        let value_string = value.as_str().unwrap_or("unknown");
-                        let value_str = str_to_static_str(value_string).trim();
-                        let split_str_parts: Vec<&str> =
-                            value_string.split(',').map(|x| x.trim()).collect();
-
-                        match key.as_str() {
-                            "EventName" => {
-                                if !all_events.contains_key(value_str.clone()) {
-                                    all_events.insert(value_str, 0);
-                                    assert!(all_events.contains_key(value_str));
-                                    do_insert = true;
-                                } else {
-                                    do_insert = false;
-                                    println!("WARN: Key {} already exists.", value_str);
-                                }
-                                event_name = value_str;
-                            }
-                            "EventCode" => {
-                                let split_parts: Vec<u64> = parse_hex_numbers(split_str_parts);
-                                match split_parts.len() {
-                                    1 => {
-                                        assert!(split_parts[0] <= u8::max_value() as u64);
-                                        event_code = Tuple::One(split_parts[0] as u8)
-                                    }
-                                    2 => {
-                                        assert!(split_parts[0] <= u8::max_value() as u64);
-                                        assert!(split_parts[1] <= u8::max_value() as u64);
-                                        event_code =
-                                            Tuple::Two(split_parts[0] as u8, split_parts[1] as u8)
-                                    }
-                                    _ => panic!("More than two event codes?"),
-                                }
-                            }
-                            "UMask" => {
-                                let split_parts: Vec<u64> = parse_hex_numbers(split_str_parts);
-                                match split_parts.len() {
-                                    1 => {
-                                        assert!(split_parts[0] <= u8::max_value() as u64);
-                                        umask = Tuple::One(split_parts[0] as u8)
-                                    }
-                                    2 => {
-                                        assert!(split_parts[0] <= u8::max_value() as u64);
-                                        assert!(split_parts[1] <= u8::max_value() as u64);
-                                        umask =
-                                            Tuple::Two(split_parts[0] as u8, split_parts[1] as u8)
-                                    }
-                                    _ => panic!("More than two event codes?"),
-                                }
-                            }
-                            "BriefDescription" => brief_description = value_str,
-                            "PublicDescription" => {
-                                if brief_description != value_str && value_str != "tbd" {
-                                    public_description = Some(value_str);
-                                } else {
-                                    public_description = None;
-                                }
-                            }
-                            "Counter" => counter = parse_counters(value_str),
-                            "CounterHTOff" => counter_ht_off = Some(parse_counters(value_str)),
-                            "PEBScounters" => pebs_counters = Some(parse_counters(value_str)),
-                            "SampleAfterValue" => sample_after_value = parse_number(value_str),
-                            "MSRIndex" => {
-                                let split_parts: Vec<u64> = value_str
-                                    .split(",")
-                                    .map(|x| x.trim())
-                                    .map(|x| parse_number(x))
-                                    .collect();
-                                println!("{:?}", split_parts);
-
-                                msr_index = match split_parts.len() {
-                                    1 => {
-                                        if split_parts[0] != 0 {
-                                            MSRIndex::One(split_parts[0])
-                                        } else {
-                                            MSRIndex::None
-                                        }
-                                    }
-                                    2 => MSRIndex::Two(split_parts[0], split_parts[1]),
-                                    _ => panic!("More than two MSR indexes?"),
-                                }
-                            }
-                            "MSRValue" => msr_value = parse_number(value_str),
-                            "TakenAlone" => taken_alone = parse_bool(value_str),
-                            "CounterMask" => counter_mask = parse_number(value_str) as u8,
-                            "Invert" => invert = parse_bool(value_str),
-                            "AnyThread" => any_thread = parse_bool(value_str),
-                            "EdgeDetect" => edge_detect = parse_bool(value_str),
-                            "PEBS" => pebs = parse_pebs(value_str),
-                            "PRECISE_STORE" => precise_store = parse_bool(value_str),
-                            "Data_LA" => data_la = parse_bool(value_str),
-                            "L1_Hit_Indication" => l1_hit_indication = parse_bool(value_str),
-                            "Errata" => errata = parse_null_string(value_str),
-                            "Offcore" => offcore = parse_bool(value_str),
-                            "Unit" => unit = parse_null_string(value_str),
-                            "Filter" => filter = parse_null_string(value_str),
-                            "ExtSel" => extsel = parse_bool(value_str),
-                            "CollectPEBSRecord" => {
-                                collect_pebs_record = Some(parse_number(value_str))
-                            }
-                            "ELLC" => { /* Ignored due to missing documentation. */ }
-                            "EVENT_STATUS" => event_status = parse_number(value_str),
-                            "PDIR_COUNTER" => { /* Ignored */ }
-                            "Deprecated" => deprecated = parse_bool(value_str),
-                            "FCMask" => fc_mask = parse_number(value_str) as u8,
-                            "FILTER_VALUE" => filter_value = parse_number(value_str),
-                            "PortMask" => port_mask = parse_number(value_str) as u8,
-                            "UMaskExt" => umask_ext = parse_number(value_str) as u8,
-                            _ => panic!("Unknown member: {} in file {}", key, input),
-                        };
-                    }
-
-                    let ipcd = EventDescription::new(
-                        event_code,
-                        umask,
-                        event_name,
-                        brief_description,
-                        public_description,
-                        counter,
-                        counter_ht_off,
-                        pebs_counters,
-                        sample_after_value,
-                        msr_index,
-                        msr_value,
-                        taken_alone,
-                        counter_mask,
-                        invert,
-                        any_thread,
-                        edge_detect,
-                        pebs,
-                        precise_store,
-                        collect_pebs_record,
-                        data_la,
-                        l1_hit_indication,
-                        errata,
-                        offcore,
-                        unit,
-                        filter,
-                        extsel,
-                        uncore,
-                        deprecated,
-                        event_status,
-                        fc_mask,
-                        filter_value,
-                        port_mask,
-                        umask_ext,
-                    );
-
-                    //println!("{:?}", ipcd.event_name);
-                    if do_insert {
-                        builder_values.insert(String::from(ipcd.event_name), format!("{:?}", ipcd));
-                    }
-                }
-            } else {
-                panic!("JSON data is not an array.");
+                println!("{:?}", entry);
+                /* if pcn.do_insert {
+                    builder_values.insert(String::from(ipcd.event_name), format!("{:?}", ipcd));
+                } */
             }
         }
 
