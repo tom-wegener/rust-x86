@@ -285,6 +285,8 @@ mod performance_counter {
                             "FILTER_VALUE" => filter_value = parse_number(value_str),
                             "PortMask" => port_mask = parse_number(value_str) as u8,
                             "UMaskExt" => umask_ext = parse_number(value_str) as u8,
+                            "CounterType" => { /* Ignored, TODO: merge with counter parsing */ }
+                            "Speculative" => { /* Ignored */ }
                             _ => panic!("Unknown member: {} in file {}", key, input),
                         };
                     }
