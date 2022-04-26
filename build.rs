@@ -13,49 +13,57 @@ mod performance_counter {
     use serde_json;
     use std::collections::HashMap;
     use std::env;
-    use std::fs::File;
-    use std::io::{BufReader, BufWriter, Write};
+    use std::fs;
+    use std::io::{BufWriter, Write};
     use std::path::Path;
 
-    #[cfg(feature = "performance-counter")]
-    #[serde(rename_all = "lowercase")]
     #[derive(Serialize, Deserialize, Debug)]
-    struct PerfCounter {
+    #[serde(deny_unknown_fields)]
+    struct PerfCounterJson {
         eventname: String,
         eventcode: String, // One or two u8/u64-values
-        umask: String,      // One or two u8/u64-values
+        umask: String,     // One or two u8/u64-values
         briefdescription: String,
-        publicdescription: String,
-        counter: u64,
-        counterhtoff: Option<u64>,
-        pebscounters: Option<u64>,
-        sampleafter_value: u64,
-        msrindex: String, // Vec<u64>: len(1) => MSRIndex::One(split_parts[0]), len(2) => MSRIndex::Two(split_parts[0], split_parts[1])
-        msrvalue: u64,
-        takenalone: bool,
-        countermask: u8, //or u8
-        invert: bool,
-        any_thread: bool,
-        edgedetect: bool,
-        pebs: u8,
-        precisestore: bool,
-        data_la: bool,
-        l1_hit_indication: bool,
-        errata: String,
-        offcore: bool,
-        unit: String,
-        filter: String,
-        xxt_sel: bool,
-        collect_pebsrecord: Option<u64>,
-        ellc: String,
-        even_status: u64,
-        pdir_counter: String,
-        deprecated: bool,
-        fcmask: u8,
-        filter_value: u64,
-        port_mask: u8,
-        umask_ext: u8,
-        counter_type: String,
+        publicdescription: Option<String>,
+        counter: String,
+        counterhtoff: Option<String>,
+        pebscounters: Option<String>,
+        sampleaftervalue: Option<String>,
+        msrindex: Option<String>, // Vec<u64>: len(1) => MSRIndex::One(split_parts[0]), len(2) => MSRIndex::Two(split_parts[0], split_parts[1])
+        msrvalue: Option<String>,
+        takenalone: Option<String>,
+        countermask: Option<String>, //or u8
+        invert: Option<String>,
+        any_thread: Option<String>,
+        edgedetect: Option<String>,
+        pebs: Option<String>,
+        precisestore: Option<String>,
+        data_la: Option<String>,
+        l1_hit_indication: Option<String>,
+        errata: Option<String>,
+        offcore: Option<String>,
+        unit: Option<String>,
+        filter: Option<String>,
+        xxt_sel: Option<String>,
+        collect_pebsrecord: Option<String>,
+        ellc: Option<String>,
+        even_status: Option<String>,
+        pdir_counter: Option<String>,
+        deprecated: Option<String>,
+        fcmask: Option<String>,
+        filter_value: Option<String>,
+        port_mask: Option<String>,
+        umask_ext: Option<String>,
+        counter_type: Option<String>,
+        anythread: Option<String>,
+        portmask: Option<String>,
+        umaskext: Option<String>,
+        collectpebsrecord: Option<String>,
+        extsel: Option<String>,
+        countertype: Option<String>,
+        precise_store: Option<String>,
+        event_status: Option<String>,
+        speculative: Option<String>,
     }
 
     include!(concat!(
@@ -158,7 +166,11 @@ mod performance_counter {
         }
     }
 
-    fn parse_performance_counters(inputs: Vec<String>, variable: &str, file: &mut BufWriter<File>) {
+    fn parse_performance_counters(
+        inputs: Vec<String>,
+        variable: &str,
+        file: &mut BufWriter<fs::File>,
+    ) {
         let mut builder_values = HashMap::new();
         //let mut all_events = HashMap::new();
         let mut builder = phf_codegen::Map::new();
@@ -166,14 +178,13 @@ mod performance_counter {
         for input in inputs {
             println!("input = {}", input);
 
-            let f = File::open(format!("x86data/perfmon_data{}", input.clone()).as_str()).unwrap();
-            let reader = BufReader::new(f);
-            let data: Vec<PerfCounter> = serde_json::from_reader(reader).unwrap();
-            let uncore = get_file_suffix(input.clone()) == "uncore";
+            let f = fs::read_to_string(format!("x86data/perfmon_data{}", input.clone()).as_str())
+                .unwrap();
+            let data: Vec<PerfCounter> = serde_json::from_str(&f.to_lowercase()).unwrap();
+            let _uncore = get_file_suffix(input.clone()) == "uncore";
 
-            for entry in data.iter() {
-
-                println!("{:?}", entry);
+            for _entry in data.iter() {
+                //println!("{:?}", entry);
                 /* if pcn.do_insert {
                     builder_values.insert(String::from(ipcd.event_name), format!("{:?}", ipcd));
                 } */
@@ -261,7 +272,7 @@ mod performance_counter {
 
         // Now build hash-table so we can later select performance counters for each architecture
         let path = Path::new(&env::var("OUT_DIR").unwrap()).join("counters.rs");
-        let mut filewriter = BufWriter::new(File::create(&path).unwrap());
+        let mut filewriter = BufWriter::new(fs::File::create(&path).unwrap());
 
         let mut builder = phf_codegen::Map::new();
         let mut inserted: HashMap<String, bool> = HashMap::new();
